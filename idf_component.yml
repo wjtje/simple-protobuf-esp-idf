@@ -1,0 +1,8 @@
+version: "0.1.0"
+description: "Simple Protobuf for ESP-IDF"
+url: https://github.com/wjtje/simple-protobuf-esp-idf
+repository: https://github.com/wjtje/simple-protobuf-esp-idf
+license: MIT
+dependencies:
+  idf:
+    version: ">=4.1.0"

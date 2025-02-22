@@ -51,7 +51,7 @@ void process_file( const fs::path & input_file, std::span< const fs::path > impo
 {
     const auto parsed_file       = parse_proto_file( input_file, import_paths );
     const auto output_cpp_header = cpp_file_name_from_proto( input_file, ".pb.h" );
-    const auto output_cpp        = cpp_file_name_from_proto( input_file, ".pb.cc" );
+    const auto output_cpp        = cpp_file_name_from_proto( input_file, ".pb.cpp" );
 
     auto cpp_header_stream = std::ofstream( output_dir / output_cpp_header );
     dump_cpp_header( parsed_file, cpp_header_stream );

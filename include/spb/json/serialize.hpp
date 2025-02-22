@@ -18,6 +18,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cinttypes>
 #include <concepts>
 #include <cstddef>
 #include <cstring>
@@ -70,7 +71,7 @@ public:
         if( codepoint <= 0xffff )
         {
             char buffer[ 8 ] = { };
-            auto size        = snprintf( buffer, sizeof( buffer ), "\\u%04x", codepoint );
+            auto size        = snprintf( buffer, sizeof( buffer ), "\\u%04" PRIx32, codepoint );
             return write( std::string_view( buffer, size ) );
         }
         if( codepoint <= 0x10FFFF )
