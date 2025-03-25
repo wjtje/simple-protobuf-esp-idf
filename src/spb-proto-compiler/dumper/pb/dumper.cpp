@@ -198,6 +198,10 @@ auto encoder_type( const proto_field & field ) -> std::string
         }
         return "_as< scalar_encoder::i64 >";
     }
+    if( is_packed_array( field ) )
+    {
+        return "_as< scalar_encoder::packed >";
+    }
     return "";
 }
 

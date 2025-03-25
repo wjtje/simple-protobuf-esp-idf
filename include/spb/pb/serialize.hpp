@@ -112,6 +112,12 @@ static inline void serialize_as( ostream & stream, uint32_t field_number,
                                  const std::map< keyT, valueT > & value );
 
 template < scalar_encoder encoder >
+static inline void serialize_as( ostream & stream, spb::detail::proto_enum auto value )
+{
+    serialize_varint( stream, int32_t( value ) );
+}
+
+template < scalar_encoder encoder >
 static inline void serialize_as( ostream & stream, uint32_t field_number,
                                  spb::detail::proto_field_int_or_float auto value )
 {

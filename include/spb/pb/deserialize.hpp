@@ -206,7 +206,7 @@ template < typename T >
                 {
                     //- GPB encodes signed varints always as 64-bits
                     //- so int32_t(-2) is encoded as "\xfe\xff\xff\xff\xff\xff\xff\xff\xff\x01",
-                    //same as int64_t(-2)
+                    // same as int64_t(-2)
                     //- but it should be encoded as  "\xfe\xff\xff\xff\x0f"
                     value = T( value );
                 }
@@ -329,6 +329,20 @@ static inline auto deserialize_bitfield_as( istream & stream, uint32_t bits, wir
     }
     spb::detail::check_if_value_fit_in_bits( value, bits );
     return value;
+}
+
+template < scalar_encoder encoder >
+static inline void deserialize_as( istream & stream, spb::detail::proto_enum auto & value,
+                                   wire_type type )
+{
+    using T        = std::remove_cvref_t< decltype( value ) >;
+    using int_type = std::underlying_type_t< T >;
+
+    if constexpr( !is_packed( encoder ) )
+    {
+        check_wire_type( type, wire_type::varint );
+    }
+    value = T( read_varint< int_type >( stream ) );
 }
 
 template < scalar_encoder encoder >
