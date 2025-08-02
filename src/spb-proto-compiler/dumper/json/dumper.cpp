@@ -194,8 +194,8 @@ void dump_cpp_serialize_value( std::ostream & stream, const proto_oneof & oneof 
     for( size_t i = 0; i < oneof.fields.size( ); ++i )
     {
         stream << "\t\t\tcase " << i << ":\n\t\t\t\treturn stream.serialize( \""
-               << json_field_name( oneof.fields[ i ] ) << "\"sv, std::get< " << i << " >( value."
-               << oneof.name << ") );\n";
+               << json_field_name( oneof.fields[ i ] ) << "\"sv, std::get< " << i + 1
+               << " >( value." << oneof.name << ") );\n";
     }
     stream << "\t\t}\n\t}\n\n";
 }
@@ -446,7 +446,7 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_message & me
         }
         else
         {
-            stream << "\t\t\t\treturn stream.deserialize_variant<" << field.oneof_index
+            stream << "\t\t\t\treturn stream.deserialize_variant<" << field.oneof_index + 1
                    << ">( value." << field.name << " );\n";
         }
         stream << "\t\t\t}\n";

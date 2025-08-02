@@ -329,8 +329,8 @@ auto get_field_bits( const proto_field & field ) -> std::string_view
 
 auto get_container_type( const proto_options & options, const proto_options & message_options,
                          const proto_options & file_options, std::string_view option,
-                         std::string_view ctype,
-                         std::string_view default_type = { } ) -> std::string
+                         std::string_view ctype, std::string_view default_type = { } )
+    -> std::string
 {
     if( auto p_name = options.find( option ); p_name != options.end( ) )
     {
@@ -498,17 +498,10 @@ void dump_message_oneof( std::ostream & stream, const proto_oneof & oneof, const
 {
     dump_comment( stream, oneof.comment );
 
-    auto put_comma = false;
-    stream << "std::variant< ";
+    stream << "std::variant< std::monostate";
     for( const auto & field : oneof.fields )
     {
-        if( put_comma )
-        {
-            stream << ", ";
-        }
-
-        stream << convert_to_ctype( file, field.type );
-        put_comma = true;
+        stream << ", " << convert_to_ctype( file, field.type );
     }
     stream << " > " << oneof.name << ";\n";
 }

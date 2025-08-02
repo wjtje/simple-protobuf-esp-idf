@@ -211,9 +211,9 @@ void dump_cpp_serialize_value( std::ostream & stream, const proto_oneof & oneof 
     stream << "\t\tswitch( index )\n\t\t{\n";
     for( size_t i = 0; i < oneof.fields.size( ); ++i )
     {
-        stream << "\t\t\tcase " << i << ":\n\t\t\t\treturn stream.serialize"
+        stream << "\t\t\tcase " << i + 1 << ":\n\t\t\t\treturn stream.serialize"
                << encoder_type( oneof.fields[ i ] ) << "( " << oneof.fields[ i ].number
-               << ", std::get< " << i << " >( value." << oneof.name << ") );\n";
+               << ", std::get< " << i + 1 << " >( value." << oneof.name << ") );\n";
     }
     stream << "\t\t}\n\t}\n\n";
 }
@@ -290,13 +290,13 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_message & me
             auto type = encoder_type( oneof.fields[ i ] );
             if( type.empty( ) )
             {
-                stream << "\tstream.deserialize_variant< " << i << ">( value." << oneof.name
+                stream << "\tstream.deserialize_variant< " << i + 1 << ">( value." << oneof.name
                        << ", tag );\n";
             }
             else
             {
                 type.erase( 0, 4 );
-                stream << "\tstream.deserialize_variant_as< " << i << ", " << type << "( value."
+                stream << "\tstream.deserialize_variant_as< " << i + 1 << ", " << type << "( value."
                        << oneof.name << ", tag );\n";
             }
         }
