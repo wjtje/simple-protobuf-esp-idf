@@ -190,7 +190,8 @@ static inline void serialize( ostream & stream, uint32_t field_number,
 {
     if( !value.empty( ) )
     {
-        spb::detail::utf8::validate( std::string_view( value.data( ), value.size( ) ) );
+        // FIXME: We don't check if the UTF-8 is valid
+        // spb::detail::utf8::validate( std::string_view( value.data( ), value.size( ) ) );
         serialize_tag( stream, field_number, wire_type::length_delimited );
         serialize_varint( stream, value.size( ) );
         stream.write( value.data( ), value.size( ) );

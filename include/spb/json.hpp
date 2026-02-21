@@ -13,6 +13,7 @@
 #include "json/deserialize.hpp"
 #include "json/serialize.hpp"
 #include <cstdlib>
+#include <expected>
 
 namespace spb::json
 {
@@ -25,9 +26,13 @@ namespace spb::json
  * @return serialized size in bytes
  * @throws exceptions only from `on_write`
  */
-static inline auto serialize( const auto & message, spb::io::writer on_write ) -> size_t
+[[nodiscard]] static inline std::expected<size_t, esp_err_t> serialize( const auto & message, spb::io::writer on_write ) noexcept
 {
-    return detail::serialize( message, on_write );
+    size_t size;
+    const esp_err_t ret = detail::serialize( message, on_write, size );
+    if (ret != ESP_OK)
+        return std::unexpected(ret);
+    return size;
 }
 
 /**
@@ -36,9 +41,9 @@ static inline auto serialize( const auto & message, spb::io::writer on_write ) -
  * @param message to be serialized
  * @return serialized size in bytes
  */
-[[nodiscard]] static inline auto serialize_size( const auto & message ) -> size_t
+[[nodiscard]] static inline size_t serialize_size( const auto & message ) noexcept
 {
-    return serialize( message, spb::io::writer( nullptr ) );
+    return serialize( message, spb::io::writer( nullptr ) ).value_or(0);
 }
 
 /**
@@ -51,18 +56,18 @@ static inline auto serialize( const auto & message, spb::io::writer on_write ) -
  *          `spb::json::serialize( message, serialized );`
  */
 template < typename Message, spb::resizable_container Container >
-static inline auto serialize( const Message & message, Container & result ) -> size_t
+[[nodiscard]] static inline std::expected<size_t, esp_err_t> serialize( const Message & message, Container & result ) noexcept
 {
     const auto size = serialize_size( message );
     result.resize( size );
-    auto writer = [ ptr = result.data( ) ]( const void * data, size_t size ) mutable
+    auto writer = [ ptr = result.data( ) ]( const void * data, size_t size ) mutable -> esp_err_t
     {
         memcpy( ptr, data, size );
         ptr += size;
+        return ESP_OK;
     };
 
-    serialize( message, writer );
-    return size;
+    return serialize( message, writer );
 }
 
 /**
@@ -74,11 +79,13 @@ static inline auto serialize( const Message & message, Container & result ) -> s
  * @example `auto serialized_message = spb::json::serialize( message );`
  */
 template < spb::resizable_container Container = std::string, typename Message >
-[[nodiscard]] static inline auto serialize( const Message & message ) -> Container
+[[nodiscard]] static inline std::expected<Container, esp_err_t> serialize( const Message & message ) noexcept
 {
-    auto result = Container( );
-    serialize< Message, Container >( message, result );
-    return result;
+    auto c = Container( );
+    auto result = serialize< Message, Container >( message, c );
+    if (result.has_value())
+        return c;
+    return std::unexpected(result.error());
 }
 
 /**
@@ -88,7 +95,7 @@ template < spb::resizable_container Container = std::string, typename Message >
  * @param result deserialized json
  * @throws std::runtime_error on error
  */
-static inline void deserialize( auto & result, spb::io::reader on_read )
+[[nodiscard]] static inline esp_err_t deserialize( auto & result, spb::io::reader on_read ) noexcept
 {
     return detail::deserialize( result, on_read );
 }
@@ -104,7 +111,7 @@ static inline void deserialize( auto & result, spb::io::reader on_read )
  *          `spb::json::deserialize( message, serialized );`
  */
 template < typename Message, spb::size_container Container >
-static inline void deserialize( Message & message, const Container & json )
+[[nodiscard]] static inline esp_err_t deserialize( Message & message, const Container & json ) noexcept
 {
     auto reader = [ ptr = json.data( ), end = json.data( ) + json.size( ) ](
                       void * data, size_t size ) mutable -> size_t
@@ -128,10 +135,11 @@ static inline void deserialize( Message & message, const Container & json )
  *          `auto message = spb::json::deserialize< Message >( serialized );`
  */
 template < typename Message, spb::size_container Container >
-[[nodiscard]] static inline auto deserialize( const Container & json ) -> Message
+[[nodiscard]] static inline std::expected<Message, esp_err_t> deserialize( const Container & json ) noexcept
 {
     auto message = Message{ };
-    deserialize( message, json );
+    if (esp_err_t ret = deserialize( message, json ); unlikely(ret != ESP_OK))
+        return std::unexpected(ret);
     return message;
 }
 
@@ -144,7 +152,7 @@ template < typename Message, spb::size_container Container >
  * @example `auto message = spb::json::deserialize< Message >( reader )`
  */
 template < typename Message >
-[[nodiscard]] static inline auto deserialize( spb::io::reader on_read ) -> Message
+[[nodiscard]] static inline std::expected<Message, esp_err_t> deserialize( spb::io::reader on_read )
 {
     auto message = Message{ };
     return deserialize( message, on_read );

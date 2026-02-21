@@ -13,8 +13,8 @@
 
 #include <climits>
 #include <cstdint>
-#include <stdexcept>
 #include <string_view>
+#include <esp_err.h>
 
 namespace spb::detail::utf8
 {
@@ -115,14 +115,6 @@ static inline auto is_valid( std::string_view str ) -> bool
     }
 
     return state == ok;
-}
-
-static inline void validate( std::string_view value )
-{
-    if( !spb::detail::utf8::is_valid( std::string_view( value.data( ), value.size( ) ) ) )
-    {
-        throw std::runtime_error( "invalid utf8 string" );
-    }
 }
 
 }// namespace spb::detail::utf8

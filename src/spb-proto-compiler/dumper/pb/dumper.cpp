@@ -223,11 +223,11 @@ void dump_cpp_serialize_value( std::ostream & stream, const proto_message & mess
 {
     if( message.fields.empty( ) && message.maps.empty( ) && message.oneofs.empty( ) )
     {
-        stream << "void serialize( detail::ostream & , const " << full_name << " & )\n{\n}\n\n";
+        stream << "void serialize( detail::ostream & , const " << full_name << " & ) noexcept\n{\n}\n\n";
         return;
     }
 
-    stream << "void serialize( detail::ostream & stream, const " << full_name << " & value )\n{\n";
+    stream << "void serialize( detail::ostream & stream, const " << full_name << " & value ) noexcept\n{\n";
     for( const auto & field : message.fields )
     {
         stream << "\tstream.serialize" << encoder_type( field ) << "( " << field.number
@@ -250,14 +250,14 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_message & me
 {
     if( message.fields.empty( ) && message.maps.empty( ) && message.oneofs.empty( ) )
     {
-        stream << "void deserialize_value( detail::istream & stream, " << full_name
-               << " &, uint32_t tag )\n{\n";
-        stream << "\tstream.skip( tag );\n}\n\n";
+        stream << "[[nodiscard]] esp_err_t deserialize_value( detail::istream & stream, "
+               << full_name << " &, uint32_t tag ) noexcept\n{\n";
+        stream << "\treturn stream.skip( tag );\n}\n\n";
         return;
     }
 
-    stream << "void deserialize_value( detail::istream & stream, " << full_name
-           << " & value, uint32_t tag )\n{\n";
+    stream << "[[nodiscard]] esp_err_t deserialize_value( detail::istream & stream, "
+           << full_name << " & value, uint32_t tag ) noexcept\n{\n";
     stream << "\tswitch( field_from_tag( tag ) )\n\t{\n";
 
     for( const auto & field : message.fields )

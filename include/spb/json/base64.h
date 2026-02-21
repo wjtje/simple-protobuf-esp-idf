@@ -14,12 +14,18 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <stdexcept>
+#include <expected>
+#include <esp_err.h>
+
+#ifndef SPB_CHECK
+#define SPB_CHECK(x) \
+    if (esp_err_t ret = x; unlikely(ret != ESP_OK)) return ret;
+#endif
 
 namespace spb::json::detail
 {
 template < typename ostream >
-static inline void base64_encode( ostream & output, std::span< const std::byte > input )
+[[nodiscard]] static inline esp_err_t base64_encode( ostream & output, std::span< const std::byte > input ) noexcept
 {
     static constexpr char encode_table[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -33,38 +39,39 @@ static inline void base64_encode( ostream & output, std::span< const std::byte >
         auto temp = uint32_t( *p_char++ ) << 16U;
         temp += uint32_t( *p_char++ ) << 8U;
         temp += ( *p_char++ );
-        output.write( encode_table[ ( temp & 0x00FC0000U ) >> 18U ] );
-        output.write( encode_table[ ( temp & 0x0003F000U ) >> 12U ] );
-        output.write( encode_table[ ( temp & 0x00000FC0U ) >> 6U ] );
-        output.write( encode_table[ ( temp & 0x0000003FU ) ] );
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x00FC0000U ) >> 18U ] ));
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x0003F000U ) >> 12U ] ));
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x00000FC0U ) >> 6U ] ));
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x0000003FU ) ] ));
     }
     switch( input.size( ) % 3 )
     {
     case 1:
     {
         auto temp = uint32_t( *p_char++ ) << 16U;
-        output.write( encode_table[ ( temp & 0x00FC0000U ) >> 18U ] );
-        output.write( encode_table[ ( temp & 0x0003F000U ) >> 12U ] );
-        output.write( '=' );
-        output.write( '=' );
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x00FC0000U ) >> 18U ] ));
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x0003F000U ) >> 12U ] ));
+        SPB_CHECK(output.write( '=' ));
+        SPB_CHECK(output.write( '=' ));
     }
     break;
     case 2:
     {
         auto temp = uint32_t( *p_char++ ) << 16U;
         temp += uint32_t( *p_char++ ) << 8U;
-        output.write( encode_table[ ( temp & 0x00FC0000 ) >> 18 ] );
-        output.write( encode_table[ ( temp & 0x0003F000 ) >> 12 ] );
-        output.write( encode_table[ ( temp & 0x00000FC0 ) >> 6 ] );
-        output.write( '=' );
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x00FC0000 ) >> 18 ] ));
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x0003F000 ) >> 12 ] ));
+        SPB_CHECK(output.write( encode_table[ ( temp & 0x00000FC0 ) >> 6 ] ));
+        SPB_CHECK(output.write( '=' ));
     }
     break;
     }
+    return ESP_OK;
 }
 
 template < typename istream >
-static inline void base64_decode_string( spb::detail::proto_field_bytes auto & output,
-                                         istream & stream )
+[[nodiscard]] static inline esp_err_t base64_decode_string( spb::detail::proto_field_bytes auto & output,
+                                         istream & stream ) noexcept
 {
     static constexpr uint8_t decode_table[ 256 ] = {
         128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
@@ -96,34 +103,31 @@ static inline void base64_decode_string( spb::detail::proto_field_bytes auto & o
         output.clear( );
     }
     if( stream.current_char( ) != '"' ) [[unlikely]]
-    {
-        throw std::runtime_error( "expecting '\"'" );
-    }
+        return ESP_ERR_INVALID_ARG;
 
     stream.consume_current_char( false );
     if( stream.consume( '"' ) )
-    {
-        return;
-    }
-    auto mask = uint8_t( 0 );
+        return ESP_OK;
 
+    auto mask = uint8_t( 0 );
     for( auto out_index = size_t( 0 );; )
     {
         auto view      = stream.view( UINT32_MAX );
-        auto length    = view.find( '"' );
-        auto end_found = length < view.npos;
-        if( ( end_found && length % 4 != 0 ) || view.size( ) <= 4 ) [[unlikely]]
-        {
-            throw std::runtime_error( "invalid base64" );
-        }
-        length = std::min( length, view.size( ) );
+        if (unlikely(!view.has_value())) return view.error();
+
+        auto length    = view->find( '"' );
+        auto end_found = length < view->npos;
+        if( ( end_found && length % 4 != 0 ) || view->size( ) <= 4 ) [[unlikely]]
+            return ESP_ERR_INVALID_ARG;
+
+        length = std::min( length, view->size( ) );
 
         //- align to 4 bytes
         auto aligned_length = length & ~3;
         if( aligned_length > 4 ) [[likely]]
         {
             auto out_length = ( ( aligned_length - 4 ) / 4 ) * 3;
-            view            = view.substr( 0, aligned_length );
+            view            = view->substr( 0, aligned_length );
 
             if constexpr( spb::detail::proto_field_bytes_resizable< decltype( output ) > )
             {
@@ -132,13 +136,11 @@ static inline void base64_decode_string( spb::detail::proto_field_bytes auto & o
             else
             {
                 if( out_length > ( output.size( ) - out_index ) )
-                {
-                    throw std::runtime_error( "too large base64" );
-                }
+                    return ESP_ERR_INVALID_SIZE;
             }
 
             auto * p_out      = output.data( ) + out_index;
-            const auto * p_in = reinterpret_cast< const uint8_t * >( view.data( ) );
+            const auto * p_in = reinterpret_cast< const uint8_t * >( view->data( ) );
             const auto * p_end =
                 p_in + aligned_length - 4;//- exclude the last 4 chars (possible padding)
 
@@ -156,15 +158,15 @@ static inline void base64_decode_string( spb::detail::proto_field_bytes auto & o
 
                 out_index += 3;
             }
-            auto consumed_bytes = p_in - reinterpret_cast< const uint8_t * >( view.data( ) );
-            view.remove_prefix( consumed_bytes );
+            auto consumed_bytes = p_in - reinterpret_cast< const uint8_t * >( view->data( ) );
+            view->remove_prefix( consumed_bytes );
             stream.skip( consumed_bytes );
         }
 
         if( end_found )
         {
             //- handle padding
-            const auto * p_in = reinterpret_cast< const uint8_t * >( view.data( ) );
+            const auto * p_in = reinterpret_cast< const uint8_t * >( view->data( ) );
 
             uint8_t v0 = decode_table[ *p_in++ ];
             uint8_t v1 = decode_table[ *p_in++ ];
@@ -175,9 +177,7 @@ static inline void base64_decode_string( spb::detail::proto_field_bytes auto & o
             mask |= ( v0 | v1 | v2 | v3 );
             mask |= ( ( i1 == '=' ) & ( i2 != '=' ) ) ? 128 : 0;
             if( mask & 128 ) [[unlikely]]
-            {
-                throw std::runtime_error( "invalid base64" );
-            }
+                return ESP_ERR_INVALID_ARG;
 
             auto padding_size   = ( i1 == '=' ? 1 : 0 ) + ( i2 == '=' ? 1 : 0 );
             auto consumed_bytes = 3 - padding_size;
@@ -190,9 +190,7 @@ static inline void base64_decode_string( spb::detail::proto_field_bytes auto & o
             else
             {
                 if( output.size( ) != out_index + consumed_bytes )
-                {
-                    throw std::runtime_error( "too large base64" );
-                }
+                    return ESP_ERR_INVALID_ARG;
             }
             auto * p_out = output.data( ) + out_index;
             if( padding_size == 0 )
@@ -210,8 +208,12 @@ static inline void base64_decode_string( spb::detail::proto_field_bytes auto & o
             {
                 *p_out++ = std::byte( ( v0 << 2 ) | ( v1 >> 4 ) );
             }
-            return;
+            return ESP_OK;;
         }
     }
+
+    return ESP_OK;
 }
 }// namespace spb::json::detail
+
+#undef SPB_CHECK

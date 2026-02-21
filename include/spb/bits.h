@@ -9,43 +9,45 @@
 \***************************************************************************/
 #pragma once
 
+#include <esp_err.h>
+
 #include <cassert>
 #include <climits>
 #include <cstdint>
-#include <stdexcept>
 
-namespace spb::detail
-{
-template < typename T >
-concept signed_int = std::is_signed_v< T > && std::is_integral_v< T >;
+namespace spb::detail {
+template <typename T>
+concept signed_int = std::is_signed_v<T> && std::is_integral_v<T>;
 
-template < typename T >
-concept unsigned_int = !std::is_signed_v< T > && std::is_integral_v< T >;
+template <typename T>
+concept unsigned_int = !std::is_signed_v<T> && std::is_integral_v<T>;
 
-static inline void check_if_value_fit_in_bits( signed_int auto value, uint32_t bits )
-{
-    assert( sizeof( value ) * CHAR_BIT >= bits );
-    assert( bits > 0 );
+[[nodiscard]] static inline esp_err_t check_if_value_fit_in_bits(
+  signed_int auto value, uint32_t bits
+) noexcept {
+  assert(sizeof(value) * CHAR_BIT >= bits);
+  assert(bits > 0);
 
-    decltype( value ) max = ( 1LL << ( bits - 1 ) ) - 1;
-    decltype( value ) min = -( 1LL << ( bits - 1 ) );
+  decltype(value) max = (1LL << (bits - 1)) - 1;
+  decltype(value) min = -(1LL << (bits - 1));
 
-    if( ( value < min ) | ( value > max ) ) [[unlikely]]
-    {
-        throw std::runtime_error( "bitfield overflow" );
-    }
+  if ((value < min) | (value > max)) [[unlikely]]
+    return ESP_ERR_INVALID_STATE;
+
+  return ESP_OK;
 }
 
-static inline void check_if_value_fit_in_bits( unsigned_int auto value, uint32_t bits )
-{
-    assert( sizeof( value ) * CHAR_BIT >= bits );
+[[nodiscard]] static inline esp_err_t check_if_value_fit_in_bits(
+  unsigned_int auto value, uint32_t bits
+) noexcept {
+  assert(sizeof(value) * CHAR_BIT >= bits);
 
-    decltype( value ) max = ( 1LL << bits ) - 1;
+  decltype(value) max = (1LL << bits) - 1;
 
-    if( value > max ) [[unlikely]]
-    {
-        throw std::runtime_error( "bitfield overflow" );
-    }
+  if (value > max) [[unlikely]]
+    return ESP_ERR_INVALID_STATE;
+
+  return ESP_OK;
 }
 
-}// namespace spb::detail
+}  // namespace spb::detail

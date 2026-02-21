@@ -89,7 +89,7 @@ template < spb::resizable_container Container = std::string, typename Message >
  * @param[out] message deserialized message
  * @throws std::runtime_error on error
  */
-static inline void deserialize( auto & message, spb::io::reader reader )
+[[nodiscard]] static inline esp_err_t deserialize( auto & message, spb::io::reader reader )
 {
     return detail::deserialize( message, reader );
 }
@@ -105,7 +105,7 @@ static inline void deserialize( auto & message, spb::io::reader reader )
  *          `spb::pb::deserialize( message, serialized );`
  */
 template < typename Message, spb::size_container Container >
-static inline void deserialize( Message & message, const Container & protobuf )
+[[nodiscard]] static inline esp_err_t deserialize( Message & message, const Container & protobuf )
 {
     auto reader = [ ptr = protobuf.data( ), end = protobuf.data( ) + protobuf.size( ) ](
                       void * data, size_t size ) mutable -> size_t
@@ -130,10 +130,11 @@ static inline void deserialize( Message & message, const Container & protobuf )
  *          `auto message = spb::pb::deserialize< Message >( serialized );`
  */
 template < typename Message, spb::size_container Container >
-[[nodiscard]] static inline auto deserialize( const Container & protobuf ) -> Message
+[[nodiscard]] static inline std::expected<Message,esp_err_t> deserialize( const Container & protobuf )
 {
     auto message = Message{ };
-    deserialize( message, protobuf );
+    if (esp_err_t ret = deserialize( message, protobuf ); unlikely(ret != ESP_OK))
+        return std::unexpected(ret);
     return message;
 }
 
@@ -145,10 +146,11 @@ template < typename Message, spb::size_container Container >
  * @throws std::runtime_error on error
  */
 template < typename Message >
-[[nodiscard]] static inline auto deserialize( spb::io::reader reader ) -> Message
+[[nodiscard]] static inline std::expected<Message,esp_err_t> deserialize( spb::io::reader reader )
 {
     auto message = Message{ };
-    deserialize( message, reader );
+    if (esp_err_t ret = deserialize( message, reader ); unlikely(ret != ESP_OK))
+        return std::unexpected(ret);
     return message;
 }
 

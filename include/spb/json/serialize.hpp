@@ -26,12 +26,16 @@
 #include <memory>
 #include <span>
 #include <spb/io/io.hpp>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
 #include <type_traits>
 #include <vector>
+
+#ifndef SPB_CHECK
+#define SPB_CHECK(x) \
+    if (esp_err_t ret = x; unlikely(ret != ESP_OK)) return ret;
+#endif
 
 namespace spb::json::detail
 {
@@ -56,17 +60,18 @@ public:
     {
     }
 
-    void write( char c ) noexcept
+    [[nodiscard]] esp_err_t write( char c ) noexcept
     {
         if( on_write )
         {
-            on_write( &c, sizeof( c ) );
+            SPB_CHECK(on_write( &c, sizeof( c ) ));
         }
 
         bytes_written += sizeof( c );
+        return ESP_OK;
     }
 
-    void write_unicode( uint32_t codepoint )
+    [[nodiscard]] esp_err_t write_unicode( uint32_t codepoint ) noexcept
     {
         if( codepoint <= 0xffff )
         {
@@ -84,25 +89,25 @@ public:
             auto size         = snprintf( buffer, sizeof( buffer ), "\\u%04x\\u%04x", high, low );
             return write( std::string_view( buffer, size ) );
         }
-        throw std::invalid_argument( "invalid utf8" );
+        return ESP_ERR_INVALID_ARG;
     }
 
-    void write( std::string_view str )
+    [[nodiscard]] esp_err_t write( std::string_view str ) noexcept
     {
         if( on_write )
         {
-            on_write( str.data( ), str.size( ) );
+            SPB_CHECK(on_write( str.data( ), str.size( ) ));
         }
 
         bytes_written += str.size( );
+        return ESP_OK;
     }
 
-    void write_escaped( std::string_view str )
+    [[nodiscard]] esp_err_t write_escaped( std::string_view str ) noexcept
     {
         if( !has_escape_chars( str ) )
         {
-            write( str );
-            return;
+            return write( str );
         }
 
         using namespace std::literals;
@@ -116,7 +121,7 @@ public:
                 if( spb::detail::utf8::decode_point( &state, &codepoint, c ) ==
                     spb::detail::utf8::ok )
                 {
-                    write_unicode( codepoint );
+                    SPB_CHECK(write_unicode( codepoint ));
                     decoding_utf8 = false;
                 }
                 continue;
@@ -126,45 +131,46 @@ public:
                 switch( c )
                 {
                 case '"':
-                    write( R"(\")"sv );
+                    SPB_CHECK(write( R"(\")"sv ));
                     break;
                 case '\\':
-                    write( R"(\\)"sv );
+                    SPB_CHECK(write( R"(\\)"sv ));
                     break;
                 case '\b':
-                    write( R"(\b)"sv );
+                    SPB_CHECK(write( R"(\b)"sv ));
                     break;
                 case '\f':
-                    write( R"(\f)"sv );
+                    SPB_CHECK(write( R"(\f)"sv ));
                     break;
                 case '\n':
-                    write( R"(\n)"sv );
+                    SPB_CHECK(write( R"(\n)"sv ));
                     break;
                 case '\r':
-                    write( R"(\r)"sv );
+                    SPB_CHECK(write( R"(\r)"sv ));
                     break;
                 case '\t':
-                    write( R"(\t)"sv );
+                    SPB_CHECK(write( R"(\t)"sv ));
                     break;
                 default:
                     decoding_utf8 = true;
                     if( spb::detail::utf8::decode_point( &state, &codepoint, c ) ==
                         spb::detail::utf8::ok )
                     {
-                        write_unicode( codepoint );
+                        SPB_CHECK(write_unicode( codepoint ));
                         decoding_utf8 = false;
                     }
                 }
             }
             else
             {
-                write( c );
+                SPB_CHECK(write( c ));
             }
         }
         if( state != spb::detail::utf8::ok )
         {
-            throw std::runtime_error( "invalid utf8" );
+            return ESP_ERR_INVALID_STATE;
         }
+        return ESP_OK;
     }
 
     void serialize( std::string_view key, const auto & value );
@@ -190,220 +196,232 @@ private:
 
 using namespace std::literals;
 
-static inline void serialize_key( ostream & stream, std::string_view key )
+static inline esp_err_t serialize_key( ostream & stream, std::string_view key ) noexcept
 {
     if( stream.put_comma )
     {
-        stream.write( ',' );
+        SPB_CHECK(stream.write( ',' ));
     }
     stream.put_comma = true;
 
     if( !key.empty( ) )
     {
-        stream.write( '"' );
-        stream.write_escaped( key );
-        stream.write( R"(":)"sv );
+        SPB_CHECK(stream.write( '"' ));
+        SPB_CHECK(stream.write_escaped( key ));
+        SPB_CHECK(stream.write( R"(":)"sv ));
     }
+    return ESP_OK;
 }
 
-static inline void serialize( ostream & stream, std::string_view key, const bool & value );
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_field_int_or_float auto & value );
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_message auto & value );
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_enum auto & value );
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_field_string auto & value );
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_field_bytes auto & value );
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_label_repeated auto & value );
+static inline esp_err_t serialize( ostream & stream, std::string_view key, const bool & value ) noexcept;
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_field_int_or_float auto & value ) noexcept;
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_message auto & value ) noexcept;
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_enum auto & value ) noexcept;
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_field_string auto & value ) noexcept;
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_field_bytes auto & value ) noexcept;
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_label_repeated auto & value ) noexcept;
 template < typename keyT, typename valueT >
-static inline void serialize( ostream & stream, std::string_view key,
-                              const std::map< keyT, valueT > & map );
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const std::map< keyT, valueT > & map ) noexcept;
 
-static inline void serialize( ostream & stream, bool value );
-static inline void serialize( ostream & stream, spb::detail::proto_field_int_or_float auto value );
-static inline void serialize( ostream & stream,
-                              const spb::detail::proto_field_string auto & value );
+static inline esp_err_t serialize( ostream & stream, bool value ) noexcept;
+static inline esp_err_t serialize( ostream & stream, spb::detail::proto_field_int_or_float auto value ) noexcept;
+static inline esp_err_t serialize( ostream & stream,
+                              const spb::detail::proto_field_string auto & value ) noexcept;
 
-static inline void serialize( ostream & stream, bool value )
+static inline esp_err_t serialize( ostream & stream, bool value ) noexcept
 {
-    stream.write( value ? "true"sv : "false"sv );
+    return stream.write( value ? "true"sv : "false"sv );
 }
 
-static inline void serialize( ostream & stream, const std::string_view & value )
+static inline esp_err_t serialize( ostream & stream, const std::string_view & value ) noexcept
 {
-    stream.write( '"' );
-    stream.write_escaped( value );
-    stream.write( '"' );
+    SPB_CHECK(stream.write( '"' ));
+    SPB_CHECK(stream.write_escaped( value ));
+    return stream.write( '"' );
 }
 
-static inline void serialize( ostream & stream, const spb::detail::proto_field_string auto & value )
+static inline esp_err_t serialize( ostream & stream, const spb::detail::proto_field_string auto & value ) noexcept
 {
-    serialize( stream, std::string_view( value.data( ), value.size( ) ) );
+    return serialize( stream, std::string_view( value.data( ), value.size( ) ) );
 }
 
-static inline void serialize( ostream & stream, spb::detail::proto_field_int_or_float auto value )
+static inline esp_err_t serialize( ostream & stream, spb::detail::proto_field_int_or_float auto value ) noexcept
 {
     auto buffer = std::array< char, 32 >( );
 
     auto result = std::to_chars( buffer.data( ), buffer.data( ) + sizeof( buffer ), value );
-    stream.write(
+    return stream.write(
         std::string_view( buffer.data( ), static_cast< size_t >( result.ptr - buffer.data( ) ) ) );
 }
 
-static inline void serialize( ostream & stream, std::string_view key, const bool & value )
+static inline esp_err_t serialize( ostream & stream, std::string_view key, const bool & value ) noexcept
 {
-    serialize_key( stream, key );
-    serialize( stream, value );
+    SPB_CHECK(serialize_key( stream, key ));
+    return serialize( stream, value );
 }
 
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_field_int_or_float auto & value )
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_field_int_or_float auto & value ) noexcept
 {
-    serialize_key( stream, key );
-    serialize( stream, value );
+    SPB_CHECK(serialize_key( stream, key ));
+    return serialize( stream, value );
 }
 
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_field_string auto & value )
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_field_string auto & value ) noexcept
 {
     if( !value.empty( ) )
     {
-        serialize_key( stream, key );
-        serialize( stream, value );
+        SPB_CHECK(serialize_key( stream, key ));
+        return serialize( stream, value );
     }
+
+    return ESP_OK;
 }
 
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_field_bytes auto & value )
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_field_bytes auto & value ) noexcept
 {
     if( !value.empty( ) )
     {
-        serialize_key( stream, key );
-        stream.write( '"' );
-        base64_encode( stream, value );
-        stream.write( '"' );
+        SPB_CHECK(serialize_key( stream, key ));
+        SPB_CHECK(stream.write( '"' ));
+        SPB_CHECK(base64_encode( stream, value ));
+        return stream.write( '"' );
     }
+
+    return ESP_OK;
 }
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_label_repeated auto & value )
+
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_label_repeated auto & value ) noexcept
 {
     if( value.empty( ) )
     {
-        return;
+        return ESP_OK;
     }
 
-    serialize_key( stream, key );
-    stream.write( '[' );
+    SPB_CHECK(serialize_key( stream, key ));
+    SPB_CHECK(stream.write( '[' ));
     stream.put_comma = false;
     for( const auto & v : value )
     {
         if constexpr( std::is_same_v< typename std::decay_t< decltype( value ) >::value_type,
                                       bool > )
         {
-            serialize( stream, { }, bool( v ) );
+            SPB_CHECK(serialize( stream, { }, bool( v ) ));
         }
         else
         {
-            serialize( stream, { }, v );
+            SPB_CHECK(serialize( stream, { }, v ));
         }
     }
-    stream.write( ']' );
+    SPB_CHECK(stream.write( ']' ));
     stream.put_comma = true;
+    return ESP_OK;
 }
 
 static constexpr std::string_view no_name = { };
 
 template < typename keyT, typename valueT >
-static inline void serialize( ostream & stream, std::string_view key,
-                              const std::map< keyT, valueT > & map )
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const std::map< keyT, valueT > & map ) noexcept
 {
     if( map.empty( ) )
     {
-        return;
+        return ESP_OK;
     }
-    serialize_key( stream, key );
-    stream.write( '{' );
+    SPB_CHECK(serialize_key( stream, key ));
+    SPB_CHECK(stream.write( '{' ));
     stream.put_comma = false;
     for( auto & [ map_key, map_value ] : map )
     {
         if constexpr( std::is_same_v< keyT, std::string_view > ||
                       std::is_same_v< keyT, std::string > )
         {
-            serialize_key( stream, map_key );
+            SPB_CHECK(serialize_key( stream, map_key ));
         }
         else
         {
             if( stream.put_comma )
             {
-                stream.write( ',' );
+                SPB_CHECK(stream.write( ',' ));
             }
 
-            stream.write( '"' );
-            serialize( stream, map_key );
-            stream.write( R"(":)"sv );
+            SPB_CHECK(stream.write( '"' ));
+            SPB_CHECK(serialize( stream, map_key ));
+            SPB_CHECK(stream.write( R"(":)"sv ));
         }
         stream.put_comma = false;
-        serialize( stream, no_name, map_value );
+        SPB_CHECK(serialize( stream, no_name, map_value ));
         stream.put_comma = true;
     }
-    stream.write( '}' );
+    SPB_CHECK(stream.write( '}' ));
     stream.put_comma = true;
+    return ESP_OK;
 }
 
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_label_optional auto & p_value )
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_label_optional auto & p_value ) noexcept
 {
     if( p_value.has_value( ) )
     {
         return serialize( stream, key, *p_value );
     }
+    return ESP_OK;
 }
 
 template < typename T >
-static inline void serialize( ostream & stream, std::string_view key,
-                              const std::unique_ptr< T > & p_value )
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const std::unique_ptr< T > & p_value ) noexcept
 {
     if( p_value )
     {
         return serialize( stream, key, *p_value );
     }
+    return ESP_OK;
 }
 
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_message auto & value )
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_message auto & value ) noexcept
 {
-    serialize_key( stream, key );
-    stream.write( '{' );
+    SPB_CHECK(serialize_key( stream, key ));
+    SPB_CHECK(stream.write( '{' ));
     stream.put_comma = false;
 
     //
     //- serialize_value is generated by the spb-protoc
     //
-    serialize_value( stream, value );
-    stream.write( '}' );
+    SPB_CHECK(serialize_value( stream, value ));
+    SPB_CHECK(stream.write( '}' ));
     stream.put_comma = true;
+    return ESP_OK;
 }
 
-static inline void serialize( ostream & stream, std::string_view key,
-                              const spb::detail::proto_enum auto & value )
+static inline esp_err_t serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_enum auto & value ) noexcept
 {
-    serialize_key( stream, key );
+    SPB_CHECK(serialize_key( stream, key ));
 
     //
     //- serialize_value is generated by the spb-protoc
     //
-    serialize_value( stream, value );
+    return serialize_value( stream, value );
 }
 
-static inline auto serialize( const auto & value, spb::io::writer on_write ) -> size_t
+static inline esp_err_t serialize( const auto & value, spb::io::writer on_write, size_t &size ) noexcept
 {
     auto stream = ostream( on_write );
-    serialize( stream, no_name, value );
-    return stream.size( );
+    SPB_CHECK(serialize( stream, no_name, value ));
+    size = stream.size();
+    return ESP_OK;
 }
 
 void ostream::serialize( std::string_view key, const auto & value )
@@ -417,3 +435,5 @@ inline void ostream::serialize( std::string_view value )
 }
 
 }// namespace spb::json::detail
+
+#undef SPB_CHECK

@@ -137,6 +137,7 @@ void get_std_includes( cpp_includes & includes, const proto_file & file )
     includes.insert( "<spb/pb.hpp>" );
     includes.insert( "<cstdint>" );
     includes.insert( "<cstddef>" );
+    includes.insert( "<esp_err.h>" );
 
     if( contains_map( file.package.messages ) )
     {

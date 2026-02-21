@@ -173,6 +173,7 @@ void dump_cpp_includes( std::ostream & stream, std::string_view header_file_path
 {
     stream << "#include \"" << header_file_path << "\"\n"
            << "#include <spb/json.hpp>\n"
+              "#include <esp_err.h>\n"
               "#include <system_error>\n"
               "#include <type_traits>\n\n";
 }
@@ -193,9 +194,9 @@ void dump_cpp_serialize_value( std::ostream & stream, const proto_oneof & oneof 
     stream << "\t\tswitch( index )\n\t\t{\n";
     for( size_t i = 0; i < oneof.fields.size( ); ++i )
     {
-        stream << "\t\t\tcase " << i << ":\n\t\t\t\treturn stream.serialize( \""
+        stream << "\t\t\tcase " << i << ":\n\t\t\t\tstream.serialize( \""
                << json_field_name( oneof.fields[ i ] ) << "\"sv, std::get< " << i + 1
-               << " >( value." << oneof.name << ") );\n";
+               << " >( value." << oneof.name << ") );\n\t\t\t\tbreak;\n";
     }
     stream << "\t\t}\n\t}\n\n";
 }
@@ -205,21 +206,23 @@ void dump_cpp_serialize_value( std::ostream & stream, const proto_enum & my_enum
 {
     if( my_enum.fields.empty( ) )
     {
-        stream << "void serialize_value( detail::ostream &, const " << full_name << " & )\n{\n";
-        stream << "\treturn ;\n}\n\n";
+        stream <<
+            "esp_err_t serialize_value( detail::ostream &, const " << full_name << " & ) noexcept\n{\n"
+            "\treturn ESP_OK;\n"
+            "}\n\n";
         return;
     }
 
-    stream << "void serialize_value( detail::ostream & stream, const " << full_name
-           << " & value )\n{\n";
-    stream << "\tswitch( value )\n\t{\n";
+    stream <<
+      "esp_err_t serialize_value( detail::ostream & stream, const " << full_name << " & value ) noexcept\n{\n"
+      "\tswitch( value )\n\t{\n";
     for( const auto & field : my_enum.fields )
     {
         stream << "\tcase " << full_name << "::" << field.name
-               << ":\n\t\treturn stream.serialize( \"" << field.name << "\"sv);\n";
+               << ":\n\t\tstream.serialize( \"" << field.name << "\"sv);\n"
+               << "\t\treturn ESP_OK;\n";
     }
-    stream << "\tdefault:\n\t\tthrow std::system_error( std::make_error_code( "
-              "std::errc::invalid_argument ) );\n";
+    stream << "\tdefault:\n\t\treturn ESP_ERR_INVALID_ARG;\n";
     stream << "\t}\n}\n\n";
 }
 
@@ -228,8 +231,9 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_enum & my_en
 {
     if( my_enum.fields.empty( ) )
     {
-        stream << "void deserialize_value( detail::istream &, " << full_name << " & )\n{\n";
-        stream << "\n}\n\n";
+        stream << "esp_err_t deserialize_value( detail::istream &, " << full_name << " & ) noexcept\n{\n"
+               << "\treturn ESP_OK;\n"
+               << "\n}\n\n";
         return;
     }
 
@@ -244,11 +248,11 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_enum & my_en
         key_size_max = std::max( key_size_max, field.name.size( ) );
     }
 
-    stream << "void deserialize_value( detail::istream & stream, " << full_name
-           << " & value )\n{\n";
-    stream << "\tauto enum_value = stream.deserialize_string_or_int( " << key_size_min << ", "
-           << key_size_max << " );\n";
-    stream << "\tstd::visit( detail::overloaded{\n\t\t[&]( std::string_view enum_str )\n\t\t{\n";
+    stream << "esp_err_t deserialize_value( detail::istream & stream, " << full_name
+           << " & value ) noexcept\n{\n";
+    stream << "\tauto enum_value = stream.deserialize_string_or_int( " << key_size_min << ", " << key_size_max << " );\n";
+    stream << "\tif (unlikely(!enum_value.has_value())) return enum_value.error();\n";
+    stream << "\treturn std::visit( detail::overloaded{\n\t\t[&]( std::string_view enum_str )\n\t\t{\n";
     stream << "\t\t\tconst auto enum_hash = djb2_hash( enum_str );\n";
     stream << "\t\t\tswitch( enum_hash )\n\t\t\t{\n";
     auto last_hash = name_map.begin( )->first + 1;
@@ -266,21 +270,19 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_enum & my_en
             stream << "\t\t\tcase detail::djb2_hash( \"" << name << "\"sv ):\n";
         }
         stream << "\t\t\t\tif( enum_str == \"" << name << "\"sv ){\n\t\t\t\t\tvalue = " << full_name
-               << "::" << name << ";\n\t\t\t\t\treturn ;\t\t\t\t}\n";
+               << "::" << name << ";\n\t\t\t\t\treturn ESP_OK;\n\t\t\t\t}\n";
     }
     stream << "\t\t\t\tbreak ;\n";
-    stream << "\t\t\t}\n\t\t\tthrow std::system_error( std::make_error_code( "
-              "std::errc::invalid_argument ) );\n";
+    stream << "\t\t\t}\n\t\t\treturn ESP_ERR_INVALID_ARG;\n";
     stream << "\t\t},\n\t\t[&]( int32_t enum_int )\n\t\t{\n\t\t\tswitch( " << full_name
            << "( enum_int ) )\n\t\t\t{\n";
     for( const auto & field : my_enum.fields )
     {
         stream << "\t\t\tcase " << full_name << "::" << field.name << ":\n";
     }
-    stream << "\t\t\t\tvalue = " << full_name << "( enum_int );\n\t\t\t\treturn ;\n";
-    stream << "\t\t\t}\n\t\t\tthrow std::system_error( std::make_error_code( "
-              "std::errc::invalid_argument ) );\n";
-    stream << "\t\t}\n\t}, enum_value );\n}\n\n";
+    stream << "\t\t\t\tvalue = " << full_name << "( enum_int );\n\t\t\t\treturn ESP_OK;\n";
+    stream << "\t\t\t}\n\t\t\treturn ESP_ERR_INVALID_ARG;\n";
+    stream << "\t\t}\n\t}, enum_value.value() );\n}\n\n";
 }
 
 void dump_cpp_serialize_value( std::ostream & stream, const proto_message & message,
@@ -288,13 +290,15 @@ void dump_cpp_serialize_value( std::ostream & stream, const proto_message & mess
 {
     if( message.fields.empty( ) && message.maps.empty( ) && message.oneofs.empty( ) )
     {
-        stream << "void serialize_value( detail::ostream & , const " << full_name
-               << " & )\n{\n}\n\n";
+        stream <<
+          "esp_err_t serialize_value( detail::ostream & , const " << full_name << " & ) noexcept\n{\n"
+          "\treturn ESP_OK;\n"
+          "}\n\n";
         return;
     }
 
-    stream << "void serialize_value( detail::ostream & stream, const " << full_name
-           << " & value )\n{\n";
+    stream << "esp_err_t serialize_value( detail::ostream & stream, const " << full_name
+           << " & value ) noexcept\n{\n";
     for( const auto & field : message.fields )
     {
         stream << "\tstream.serialize( \"" << json_field_name( field ) << "\"sv, value."
@@ -308,6 +312,7 @@ void dump_cpp_serialize_value( std::ostream & stream, const proto_message & mess
     {
         dump_cpp_serialize_value( stream, oneof );
     }
+    stream << "\treturn ESP_OK;\n";
     stream << "}\n";
 }
 
@@ -316,7 +321,8 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_message & me
 {
     if( message.fields.empty( ) && message.maps.empty( ) && message.oneofs.empty( ) )
     {
-        stream << "void deserialize_value( detail::istream &, " << full_name << " & )\n{\n";
+        stream << "esp_err_t deserialize_value( detail::istream &, " << full_name << " & ) noexcept\n{\n";
+        stream << "\treturn ESP_OK;\n";
         stream << "\n}\n\n";
         return;
     }
@@ -409,11 +415,11 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_message & me
         }
     }
 
-    stream << "void deserialize_value( detail::istream & stream, " << full_name
-           << " & value )\n{\n";
-    stream << "\tauto key = stream.deserialize_key( " << key_size_min << ", " << key_size_max
-           << " );\n";
-    stream << "\tswitch( djb2_hash( key ) )\n\t{\n";
+    stream << "esp_err_t deserialize_value( detail::istream & stream, " << full_name
+           << " & value ) noexcept\n{\n";
+    stream << "\tauto key = stream.deserialize_key( " << key_size_min << ", " << key_size_max << " );\n";
+    stream << "\tif (unlikely(!key.has_value())) return key.error();\n";
+    stream << "\tswitch( djb2_hash( key.value() ) )\n\t{\n";
 
     auto last_hash = name_map.begin( )->first + 1;
     auto put_break = false;
@@ -437,7 +443,7 @@ void dump_cpp_deserialize_value( std::ostream & stream, const proto_message & me
 
                 stream << "\t\t\t\tvalue." << field.name
                        << " = stream.deserialize_bitfield< decltype( value." << field.name
-                       << " ) >( " << field.bitfield << " );\n\t\t\t\treturn ;\n";
+                       << " ) >( " << field.bitfield << " );\n\t\t\t\treturn ESP_OK;\n";
             }
             else
             {

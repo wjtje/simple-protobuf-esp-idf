@@ -13,7 +13,7 @@
 #include <string_view>
 
 constexpr std::string_view file_json_header_template = R"(
-void serialize_value( ostream & stream, const $ & value );
-void deserialize_value( istream & stream, $ & value );
+[[nodiscard]] esp_err_t serialize_value( ostream & stream, const $ & value ) noexcept;
+[[nodiscard]] esp_err_t deserialize_value( istream & stream, $ & value ) noexcept;
 
 )";

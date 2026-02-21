@@ -11,6 +11,7 @@
 #pragma once
 #include "function_ref.hpp"
 #include <cstdlib>
+#include <esp_err.h>
 
 namespace spb::io
 {
@@ -22,7 +23,7 @@ namespace spb::io
  * @throws any exception thrown will stop the `serialize` process and will be propagated to the
  *         caller of `spb::pb::serialize` or `spb::json::serialize`
  */
-using writer = spb::detail::function_ref< void( const void * p_data, size_t size ) >;
+using writer = spb::detail::function_ref< int( const void * p_data, size_t size ) >;
 
 //-
 /**
