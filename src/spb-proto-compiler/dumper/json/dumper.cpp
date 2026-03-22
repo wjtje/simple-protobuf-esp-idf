@@ -215,8 +215,8 @@ void dump_cpp_serialize_value(std::ostream &stream, const proto_file &file, cons
     stream << "\t\tswitch (index)\n\t\t{\n";
     for (size_t i = 0; i < oneof.fields.size(); ++i)
     {
-        stream << "\t\t\tcase " << i << ":\n\t\t\t\treturn stream.serialize(std::get< " << i << " >(value."
-               << oneof.name.get_name() << ")";
+        stream << "\t\t\tcase " << i + 1 << ":\n\t\t\t\treturn stream.serialize(std::get< " << i + 1
+               << " >(value." << oneof.name.get_name() << ")";
         dump_field_attributes(stream, file, message, oneof.fields[i]);
         stream << ");\n";
     }
@@ -472,7 +472,7 @@ void dump_cpp_deserialize_value(std::ostream &stream, const proto_file &file, co
         }
         else
         {
-            stream << "\t\t\t\treturn stream.deserialize_variant<" << field.oneof_index << ">(value."
+            stream << "\t\t\t\treturn stream.deserialize_variant<" << field.oneof_index + 1 << ">(value."
                    << field.name.get_name() << ");\n";
         }
         stream << "\t\t\t}\n";
