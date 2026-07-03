@@ -74,7 +74,7 @@ void process_file(const fs::path &input_file, std::span<const fs::path> import_p
 {
     const auto parsed_file = parse_proto_file(input_file, import_paths);
     const auto output_cpp_header = cpp_file_name_from_proto(input_file, ".pb.h");
-    const auto output_cpp = cpp_file_name_from_proto(input_file, ".pb.cc");
+    const auto output_cpp = cpp_file_name_from_proto(input_file, ".pb.cpp");
     const auto rel_output_dir = get_relative_output_dir(input_file, import_paths);
 
     fs::create_directories(output_dir / rel_output_dir);

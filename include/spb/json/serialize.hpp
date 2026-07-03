@@ -22,6 +22,7 @@
 #include <cctype>
 #include <charconv>
 #include <cinttypes>
+#include <concepts>
 #include <cstddef>
 #include <cstring>
 #include <map>
