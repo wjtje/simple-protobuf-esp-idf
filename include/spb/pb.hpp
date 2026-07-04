@@ -147,13 +147,15 @@ size_t deserialize(auto &message, const void *buffer, size_t size, const deseria
  * @brief deserialize message from protobuf
  *
  * @param[in] reader function for handling reads
+ * @param[in] size the amount of data available to read
  * @param[in] options
  * @param[out] message deserialized message
  * @throws std::runtime_error on error
  */
-size_t deserialize(auto &message, spb::io::reader reader, const deserialize_options &options = {})
+size_t deserialize(auto &message, spb::io::reader reader, size_t size,
+                   const deserialize_options &options = {})
 {
-    detail::istream_reader stream{reader};
+    detail::istream_reader stream{reader, size};
     if (options.delimited)
     {
         const auto substream_length = read_varint<uint32_t>(stream);
